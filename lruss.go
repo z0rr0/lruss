@@ -6,20 +6,21 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
-	"syscall"
-
-	"context"
-	"github.com/z0rr0/lruss/conf"
-	"net/http"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/z0rr0/lruss/conf"
+	"github.com/z0rr0/lruss/web"
 )
 
 const (
@@ -43,6 +44,8 @@ var (
 
 	// internal loggers
 	loggerError = log.New(os.Stderr, fmt.Sprintf("ERROR [%v]: ", Name),
+		log.Ldate|log.Ltime|log.Lshortfile)
+	loggerInfo = log.New(os.Stdout, fmt.Sprintf("INFO [%v]: ", Name),
 		log.Ldate|log.Ltime|log.Lshortfile)
 )
 
@@ -79,6 +82,10 @@ func main() {
 	if err != nil {
 		loggerError.Fatalf("configuration error: %v", err)
 	}
+	err = cfg.SetRedisPool()
+	if err != nil {
+		loggerError.Fatalf("set redis pool error: %v", err)
+	}
 	server := &http.Server{
 		Addr:           cfg.Addr(),
 		Handler:        http.DefaultServeMux,
@@ -87,35 +94,64 @@ func main() {
 		MaxHeaderBytes: 1 << 20, // 1MB
 		ErrorLog:       loggerError,
 	}
+	mainCtx := conf.SetContext(context.Background(), cfg)
+	handlers := map[string]func(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error){
+		//"/":    HtmlHandler,
+		"/api": web.HandleAPI,
+	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		var err error
 		start, code := time.Now(), http.StatusOK
 		defer func() {
-			logger.Printf("%-5v %v\t%-12v\t%v",
+			switch {
+			case code == http.StatusBadRequest:
+				http.Error(w, err.Error(), code)
+			case code != http.StatusOK:
+				http.Error(w, http.StatusText(code), code)
+			}
+			loggerInfo.Printf("%-5v %v\t%-12v\t%v",
 				r.Method,
 				code,
 				time.Since(start),
 				r.URL.String(),
 			)
 		}()
-		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		handler, ok := handlers[strings.TrimRight(r.URL.Path, "/ ")]
+		if !ok {
+			code = http.StatusNotFound
+			http.NotFound(w, r)
+			return
+		}
+		ctx, cancel := context.WithTimeout(mainCtx, cfg.HandleTimeout())
+		defer cancel()
+
+		code, err = handler(ctx, w, r)
+		if err != nil {
+			loggerError.Printf("handler error: %v", err)
+		}
 	})
-	errc := make(chan error)
-	go interrupt(errc)
+	errCh := make(chan error)
+	go interrupt(errCh)
 	go func() {
-		errc <- server.ListenAndServe()
+		errCh <- server.ListenAndServe()
 	}()
-	logger.Printf("running: version=%v [%v %v debug=%v]\nListen: %v\n\n",
+	loggerInfo.Printf("running: version=%v [%v %v debug=%v]\nListen: %v\n\n",
 		Version, GoVersion, Revision, *debug || cfg.Debug, server.Addr)
-	err = <-errc
-	logger.Printf("termination: %v [%v] reason: %+v\n", Version, Revision, err)
+	err = <-errCh
+	loggerInfo.Printf("termination: %v [%v] reason: %+v\n", Version, Revision, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout())
 	defer cancel()
 
 	if msg := err.Error(); strings.HasPrefix(msg, interruptPrefix) {
-		logger.Println("graceful shutdown")
+		loggerInfo.Println("graceful shutdown")
 		if err := server.Shutdown(ctx); err != nil {
 			loggerError.Printf("graceful shutdown error: %v\n", err)
+		}
+		if err := cfg.CloseRedisPool(); err != nil {
+			loggerError.Printf("close pool error: %v\n", err)
+		} else {
+			loggerInfo.Println("closed connections pool")
 		}
 
 	}

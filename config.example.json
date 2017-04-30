@@ -1,7 +1,18 @@
 {
   "host": "",
+  "site": "http://localhost:8070",
   "port": 8070,
   "timeout": 30,
   "termination": 10,
-  "debug": true
+  "debug": true,
+  "redis": {
+    "host": "127.0.0.1",
+    "port": 6379,
+    "network": "tcp",
+    "db": 1,
+    "password": "foobared",
+    "timeout": 10,
+    "indlecon": 1,
+    "maxcon": 4
+  }
 }

@@ -16,17 +16,43 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"context"
+	"github.com/garyburd/redigo/redis"
 )
+
+const (
+	// cfgCtxkey is configuration context key.
+	cfgCtxkey cfgkey = "cfg"
+)
+
+type cfgkey string
+
+// rediscfg is configuration redis settings.
+type rediscfg struct {
+	Host     string `json:"host"`
+	Port     uint   `json:"port"`
+	Network  string `json:"network"`
+	Db       int    `json:"db"`
+	Timeout  int64  `json:"timeout"`
+	Password string `json:"password"`
+	IndleCon int    `json:"indlecon"`
+	MaxCon   int    `json:"maxcon"`
+	timeout  time.Duration
+}
 
 // Cfg is rates' configuration settings.
 type Cfg struct {
-	Host               string `json:"host"`
-	Port               uint   `json:"port"`
-	Timeout            int64  `json:"timeout"`
-	TerminationTimeout int64  `json:"termination"`
-	Debug              bool   `json:"debug"`
+	Host               string   `json:"host"`
+	Port               uint     `json:"port"`
+	Site               string   `json:"site"`
+	Timeout            int64    `json:"timeout"`
+	TerminationTimeout int64    `json:"termination"`
+	Debug              bool     `json:"debug"`
+	Redis              rediscfg `json:"redis"`
 	timeout            time.Duration
 	terminationTimeout time.Duration
+	pool               *redis.Pool
 	logger             *log.Logger
 }
 
@@ -37,13 +63,73 @@ func (c *Cfg) isValid() error {
 		return errors.New("invalid timeout value")
 	}
 	c.timeout = time.Duration(c.Timeout) * time.Second
+	if c.TerminationTimeout < 1 {
+		return errors.New("invalid termination timeout value")
+	}
 	c.terminationTimeout = time.Duration(c.TerminationTimeout) * time.Second
+	if c.Redis.Timeout < 1 {
+		return errors.New("invalid redis 	timeout value")
+	}
+	c.Redis.timeout = time.Duration(c.Redis.Timeout) * time.Second
+	if (c.Redis.IndleCon < 1) || (c.Redis.MaxCon < 1) {
+		return errors.New("invalic redis connections settings")
+	}
+	if c.Redis.Db < 0 {
+		return errors.New("invalid db number")
+	}
+	if c.Site == "" {
+		return errors.New("empty site value")
+	}
+	c.Site = strings.TrimRight(c.Site, "/ ")
 	return nil
+}
+
+// SetRedisPool sets redis connections pool and checks it.
+func (c *Cfg) SetRedisPool() error {
+	pool := &redis.Pool{
+		MaxIdle:     c.Redis.IndleCon,
+		MaxActive:   c.Redis.MaxCon,
+		IdleTimeout: c.Redis.timeout,
+		Wait:        true,
+		Dial: func() (redis.Conn, error) {
+			return redis.Dial(
+				c.Redis.Network,
+				c.RedisAddr(),
+				redis.DialConnectTimeout(c.Redis.timeout),
+				redis.DialDatabase(c.Redis.Db),
+				redis.DialPassword(c.Redis.Password),
+			)
+		},
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			if time.Since(t) < time.Minute {
+				return nil
+			}
+			_, err := c.Do("PING")
+			return err
+		},
+	}
+	conn := pool.Get()
+	_, err := conn.Do("PING")
+	if err != nil {
+		return err
+	}
+	c.pool = pool
+	return conn.Close()
+}
+
+// CloseRedisPool releases redis pool.
+func (c *Cfg) CloseRedisPool() error {
+	return c.pool.Close()
 }
 
 // Addr returns service's net address.
 func (c *Cfg) Addr() string {
 	return net.JoinHostPort(c.Host, fmt.Sprint(c.Port))
+}
+
+// RedisAddr returns redis service's net address.
+func (c *Cfg) RedisAddr() string {
+	return net.JoinHostPort(c.Redis.Host, fmt.Sprint(c.Redis.Port))
 }
 
 // HandleTimeout is service timeout.
@@ -54,6 +140,17 @@ func (c *Cfg) HandleTimeout() time.Duration {
 // ShutdownTimeout is graceful service shutdown timeout.
 func (c *Cfg) ShutdownTimeout() time.Duration {
 	return c.terminationTimeout
+}
+
+// GetConn returns redis db connection.
+func (c *Cfg) GetConn() redis.Conn {
+	c.logger.Printf("get redis conn, active count: %v", c.pool.ActiveCount())
+	return c.pool.Get()
+}
+
+// ShortURL returns short URL for configured site.
+func (c *Cfg) ShortURL(short string) string {
+	return fmt.Sprintf("%v/%v", c.Site, short)
 }
 
 // New returns new rates configuration.
@@ -83,4 +180,18 @@ func New(filename string, logger *log.Logger) (*Cfg, error) {
 		c.logger.SetOutput(os.Stdout)
 	}
 	return c, err
+}
+
+// SetContext writes settings to context.
+func SetContext(ctx context.Context, c *Cfg) context.Context {
+	return context.WithValue(ctx, cfgCtxkey, c)
+}
+
+// GetContext reads settings from context.
+func GetContext(ctx context.Context) (*Cfg, error) {
+	c, ok := ctx.Value(cfgCtxkey).(*Cfg)
+	if !ok {
+		return nil, errors.New("configuration not found")
+	}
+	return c, nil
 }
