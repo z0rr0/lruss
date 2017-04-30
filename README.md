@@ -1,2 +1,3 @@
-# lruss
-LUSS is a Redis base URL Shortening Service
+# LRUSS
+
+LRUSS is a Redis base URL Shortening Service.

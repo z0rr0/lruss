@@ -1,0 +1,7 @@
+{
+  "host": "",
+  "port": 8070,
+  "timeout": 30,
+  "termination": 10,
+  "debug": true
+}
