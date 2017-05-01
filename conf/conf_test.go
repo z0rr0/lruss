@@ -12,13 +12,13 @@ import (
 )
 
 const (
-	programName    = "github.com/z0rr0/lruss"
+	programRepo    = "github.com/z0rr0/lruss"
 	testConfigName = "config.example.json"
 )
 
 func getConfig() string {
 	dirs := []string{os.Getenv("GOPATH"), "src"}
-	dirs = append(dirs, strings.Split(programName, "/")...)
+	dirs = append(dirs, strings.Split(programRepo, "/")...)
 	dirs = append(dirs, testConfigName)
 	return path.Join(dirs...)
 }

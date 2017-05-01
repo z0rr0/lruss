@@ -47,7 +47,6 @@ type Cfg struct {
 	Site               string   `json:"site"`
 	Timeout            int64    `json:"timeout"`
 	TerminationTimeout int64    `json:"termination"`
-	Debug              bool     `json:"debug"`
 	Redis              rediscfg `json:"redis"`
 	timeout            time.Duration
 	terminationTimeout time.Duration

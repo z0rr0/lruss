@@ -4,7 +4,6 @@
   "port": 8070,
   "timeout": 30,
   "termination": 10,
-  "debug": true,
   "redis": {
     "host": "127.0.0.1",
     "port": 6379,

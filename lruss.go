@@ -91,7 +91,7 @@ func main() {
 	}
 	mainCtx := conf.SetContext(context.Background(), cfg)
 	handlers := map[string]func(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error){
-		//"/":    HtmlHandler,
+		//"/":    web.HandleHTML,
 		"api/add": web.HandleAPI,
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -115,14 +115,13 @@ func main() {
 			if err != nil {
 				loggerError.Printf("handler error: %v", err)
 			}
-			if code != http.StatusBadRequest {
+			if (code != http.StatusOK) && (code != http.StatusBadRequest) {
 				err = errors.New(http.StatusText(code))
 			}
 			return
 		}
 		if trim.IsShort(path) {
 			ctx := web.SetContext(mainCtx, path)
-			// try to found short url
 			code, err = web.HandleRedirect(ctx, w, r)
 			if err != nil {
 				loggerInfo.Printf("redirect handler error: %v", err)
@@ -141,8 +140,8 @@ func main() {
 	go func() {
 		errCh <- server.ListenAndServe()
 	}()
-	loggerInfo.Printf("running: version=%v [%v %v debug=%v]\nListen: %v\n\n",
-		Version, GoVersion, Revision, cfg.Debug, server.Addr)
+	loggerInfo.Printf("running: version=%v [%v %v]\nListen: %v\n\n",
+		Version, GoVersion, Revision, server.Addr)
 	err = <-errCh
 	loggerInfo.Printf("termination: %v [%v] reason: %+v\n", Version, Revision, err)
 

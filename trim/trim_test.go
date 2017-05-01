@@ -35,6 +35,27 @@ func TestEncode(t *testing.T) {
 	}
 }
 
+func TestIsShort(t *testing.T) {
+	items := []struct {
+		Input string
+		Out   bool
+	}{
+		{"", false},
+		{"1", true},
+		{"/1", false},
+		{"AzL8n0Y58m7", false},
+		{"AzL8n0Y58m", true},
+		{"яблоко", false},
+		{"123", true},
+		{"123/", false},
+	}
+	for _, item := range items {
+		if out := IsShort(item.Input); out != item.Out {
+			t.Errorf("result mismatch for '%s', get %v, expected %v", item.Input, out, item.Out)
+		}
+	}
+}
+
 func BenchmarkEncode(b *testing.B) {
 	// max 9223372036854775807 == AzL8n0Y58m7
 	x := "AzL8n0Y58m7"

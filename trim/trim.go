@@ -16,7 +16,7 @@ const (
 	// Alphabet is a sorted set of basis numeral system chars.
 	Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	// maxLen is maximum available short link length
-	maxLen = 11
+	maxLen = 10
 )
 
 var (
