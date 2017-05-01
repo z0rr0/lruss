@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"net/http"
 	"net/url"
 
@@ -30,6 +31,30 @@ type key string
 type Response struct {
 	URL   string `json:"url"`
 	Short string `json:"short"`
+}
+
+// allowedRate checks minute's rate for host address.
+func allowedRate(r *http.Request, c redis.Conn, rate int64) (bool, error) {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return false, err
+	}
+	hostRate, err := redis.Int64(c.Do("INCR", host))
+	if err != nil {
+		return false, err
+	}
+	if hostRate == 1 {
+		// 60 seconds rate
+		_, err = c.Do("EXPIRE", host, 60)
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	if hostRate < rate {
+		return true, nil
+	}
+	return false, nil
 }
 
 // SetContext writes path to context.
@@ -66,10 +91,22 @@ func HandleAPI(ctx context.Context, w http.ResponseWriter, r *http.Request) (int
 
 	c := cfg.GetConn()
 	defer c.Close()
+
+	if cfg.Rate > 0 {
+		allowed, err := allowedRate(r, c, cfg.Rate)
+		if err != nil {
+			return http.StatusInternalServerError, err
+		}
+		if !allowed {
+			return http.StatusTooManyRequests, nil
+		}
+	}
+
 	num, err := redis.Int64(c.Do("INCR", countKey))
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
+
 	short := trim.Encode(num)
 	response := &Response{URL: u.String(), Short: cfg.ShortURL(short)}
 
@@ -106,3 +143,14 @@ func HandleRedirect(ctx context.Context, w http.ResponseWriter, r *http.Request)
 	http.Redirect(w, r, originURL, status)
 	return status, nil
 }
+
+//func HandleHTML(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error) {
+//	cfg, err := conf.GetContext(ctx)
+//	if err != nil {
+//		return http.StatusInternalServerError, err
+//	}
+//	c := cfg.GetConn()
+//	defer c.Close()
+//
+//	return http.StatusOK, nil
+//}

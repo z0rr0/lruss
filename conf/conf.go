@@ -47,6 +47,7 @@ type Cfg struct {
 	Site               string   `json:"site"`
 	Timeout            int64    `json:"timeout"`
 	TerminationTimeout int64    `json:"termination"`
+	Rate               int64    `json:"rate"`
 	Redis              rediscfg `json:"redis"`
 	timeout            time.Duration
 	terminationTimeout time.Duration
@@ -65,7 +66,7 @@ func (c *Cfg) isValid() error {
 	}
 	c.terminationTimeout = time.Duration(c.TerminationTimeout) * time.Second
 	if c.Redis.Timeout < 1 {
-		return errors.New("invalid redis 	timeout value")
+		return errors.New("invalid redis timeout value")
 	}
 	c.Redis.timeout = time.Duration(c.Redis.Timeout) * time.Second
 	if (c.Redis.IndleCon < 1) || (c.Redis.MaxCon < 1) {
@@ -78,6 +79,9 @@ func (c *Cfg) isValid() error {
 		return errors.New("empty site value")
 	}
 	c.Site = strings.TrimRight(c.Site, "/ ")
+	if c.Rate < 0 {
+		return errors.New("invalid rate value")
+	}
 	return nil
 }
 

@@ -91,7 +91,7 @@ func main() {
 	}
 	mainCtx := conf.SetContext(context.Background(), cfg)
 	handlers := map[string]func(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error){
-		//"/":    web.HandleHTML,
+		//"":        web.HandleHTML,
 		"api/add": web.HandleAPI,
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -116,6 +116,7 @@ func main() {
 				loggerError.Printf("handler error: %v", err)
 			}
 			if (code != http.StatusOK) && (code != http.StatusBadRequest) {
+				// bad request should save original error
 				err = errors.New(http.StatusText(code))
 			}
 			return
