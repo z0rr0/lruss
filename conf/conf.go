@@ -2,7 +2,7 @@
 // All rights reserved. Use of this source code is governed
 // by a BSD-style license that can be found in the LICENSE file.
 
-//Package trim implements methods and structures to convert users' URLs.
+//Package conf implements methods setup configuration settings.
 package conf
 
 import (
@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -22,11 +21,11 @@ import (
 )
 
 const (
-	// cfgCtxkey is configuration context key.
-	cfgCtxkey cfgkey = "cfg"
+	// cfgKey is configuration context key.
+	cfgKey key = "cfg"
 )
 
-type cfgkey string
+type key string
 
 // rediscfg is configuration redis settings.
 type rediscfg struct {
@@ -53,7 +52,6 @@ type Cfg struct {
 	timeout            time.Duration
 	terminationTimeout time.Duration
 	pool               *redis.Pool
-	logger             *log.Logger
 }
 
 // isValid checks the settings are valid.
@@ -144,7 +142,6 @@ func (c *Cfg) ShutdownTimeout() time.Duration {
 
 // GetConn returns redis db connection.
 func (c *Cfg) GetConn() redis.Conn {
-	c.logger.Printf("get redis conn, active count: %v", c.pool.ActiveCount())
 	return c.pool.Get()
 }
 
@@ -154,7 +151,7 @@ func (c *Cfg) ShortURL(short string) string {
 }
 
 // New returns new rates configuration.
-func New(filename string, logger *log.Logger) (*Cfg, error) {
+func New(filename string) (*Cfg, error) {
 	fullPath, err := filepath.Abs(strings.Trim(filename, " "))
 	if err != nil {
 		return nil, err
@@ -167,7 +164,7 @@ func New(filename string, logger *log.Logger) (*Cfg, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &Cfg{logger: logger}
+	c := &Cfg{}
 	err = json.Unmarshal(jsonData, c)
 	if err != nil {
 		return nil, err
@@ -176,20 +173,17 @@ func New(filename string, logger *log.Logger) (*Cfg, error) {
 	if err != nil {
 		return nil, err
 	}
-	if c.Debug {
-		c.logger.SetOutput(os.Stdout)
-	}
 	return c, err
 }
 
 // SetContext writes settings to context.
 func SetContext(ctx context.Context, c *Cfg) context.Context {
-	return context.WithValue(ctx, cfgCtxkey, c)
+	return context.WithValue(ctx, cfgKey, c)
 }
 
 // GetContext reads settings from context.
 func GetContext(ctx context.Context) (*Cfg, error) {
-	c, ok := ctx.Value(cfgCtxkey).(*Cfg)
+	c, ok := ctx.Value(cfgKey).(*Cfg)
 	if !ok {
 		return nil, errors.New("configuration not found")
 	}

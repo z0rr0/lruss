@@ -7,9 +7,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/z0rr0/lruss/conf"
+	"github.com/z0rr0/lruss/trim"
 	"github.com/z0rr0/lruss/web"
 )
 
@@ -62,7 +63,6 @@ func main() {
 			loggerError.Printf("abnormal termination [%v]: \n\t%v\n", Version, r)
 		}
 	}()
-	debug := flag.Bool("debug", false, "debug mode")
 	version := flag.Bool("version", false, "show version")
 	config := flag.String("config", Config, "configuration file")
 	flag.Parse()
@@ -72,13 +72,8 @@ func main() {
 			Version, Revision, BuildDate, GoVersion)
 		return
 	}
-	logger := log.New(ioutil.Discard, fmt.Sprintf("DEBUG [%v]: ", Name),
-		log.Ldate|log.Lmicroseconds|log.Lshortfile)
-	if *debug {
-		logger.SetOutput(os.Stdout)
-	}
 
-	cfg, err := conf.New(*config, logger)
+	cfg, err := conf.New(*config)
 	if err != nil {
 		loggerError.Fatalf("configuration error: %v", err)
 	}
@@ -97,17 +92,14 @@ func main() {
 	mainCtx := conf.SetContext(context.Background(), cfg)
 	handlers := map[string]func(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error){
 		//"/":    HtmlHandler,
-		"/api": web.HandleAPI,
+		"api/add": web.HandleAPI,
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		start, code := time.Now(), http.StatusOK
 		defer func() {
-			switch {
-			case code == http.StatusBadRequest:
+			if err != nil {
 				http.Error(w, err.Error(), code)
-			case code != http.StatusOK:
-				http.Error(w, http.StatusText(code), code)
 			}
 			loggerInfo.Printf("%-5v %v\t%-12v\t%v",
 				r.Method,
@@ -116,19 +108,33 @@ func main() {
 				r.URL.String(),
 			)
 		}()
-		handler, ok := handlers[strings.TrimRight(r.URL.Path, "/ ")]
-		if !ok {
-			code = http.StatusNotFound
-			http.NotFound(w, r)
+		path := strings.Trim(r.URL.Path, "/ ")
+		handler, ok := handlers[path]
+		if ok {
+			code, err = handler(mainCtx, w, r)
+			if err != nil {
+				loggerError.Printf("handler error: %v", err)
+			}
+			if code != http.StatusBadRequest {
+				err = errors.New(http.StatusText(code))
+			}
 			return
 		}
-		ctx, cancel := context.WithTimeout(mainCtx, cfg.HandleTimeout())
-		defer cancel()
-
-		code, err = handler(ctx, w, r)
-		if err != nil {
-			loggerError.Printf("handler error: %v", err)
+		if trim.IsShort(path) {
+			ctx := web.SetContext(mainCtx, path)
+			// try to found short url
+			code, err = web.HandleRedirect(ctx, w, r)
+			if err != nil {
+				loggerInfo.Printf("redirect handler error: %v", err)
+			}
+			if code == http.StatusNotFound {
+				err = errors.New(http.StatusText(code))
+			}
+			return
 		}
+		http.NotFound(w, r)
+		code = http.StatusNotFound
+		return
 	})
 	errCh := make(chan error)
 	go interrupt(errCh)
@@ -136,7 +142,7 @@ func main() {
 		errCh <- server.ListenAndServe()
 	}()
 	loggerInfo.Printf("running: version=%v [%v %v debug=%v]\nListen: %v\n\n",
-		Version, GoVersion, Revision, *debug || cfg.Debug, server.Addr)
+		Version, GoVersion, Revision, cfg.Debug, server.Addr)
 	err = <-errCh
 	loggerInfo.Printf("termination: %v [%v] reason: %+v\n", Version, Revision, err)
 

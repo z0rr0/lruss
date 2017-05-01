@@ -20,7 +20,11 @@ import (
 const (
 	// countKey is common db counter.
 	countKey = "count"
+	// pathKey is a context key for path.
+	pathKey key = "pathKey"
 )
+
+type key string
 
 // Response is API response for URL shorting.
 type Response struct {
@@ -28,9 +32,22 @@ type Response struct {
 	Short string `json:"short"`
 }
 
+// SetContext writes path to context.
+func SetContext(ctx context.Context, path string) context.Context {
+	return context.WithValue(ctx, pathKey, path)
+}
+
+// GetContext reads path from context.
+func GetContext(ctx context.Context) (string, error) {
+	c, ok := ctx.Value(pathKey).(string)
+	if !ok {
+		return "", errors.New("path not found")
+	}
+	return c, nil
+}
+
 // HandleAPI handles API request to get shor url.
 func HandleAPI(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error) {
-	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	cfg, err := conf.GetContext(ctx)
 	if err != nil {
 		return http.StatusInternalServerError, err
@@ -60,9 +77,32 @@ func HandleAPI(ctx context.Context, w http.ResponseWriter, r *http.Request) (int
 	if err != nil {
 		return http.StatusServiceUnavailable, err
 	}
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	encoder := json.NewEncoder(w)
 	if err := encoder.Encode(response); err != nil {
 		return http.StatusInternalServerError, err
 	}
 	return http.StatusOK, nil
+}
+
+// HandleRedirect finds short URL and redirects a request.
+func HandleRedirect(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error) {
+	cfg, err := conf.GetContext(ctx)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	path, err := GetContext(ctx)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	c := cfg.GetConn()
+	defer c.Close()
+
+	originURL, err := redis.String(c.Do("GET", path))
+	if err != nil {
+		return http.StatusNotFound, err
+	}
+	status := http.StatusFound
+	http.Redirect(w, r, originURL, status)
+	return status, nil
 }

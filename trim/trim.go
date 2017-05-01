@@ -15,6 +15,8 @@ import (
 const (
 	// Alphabet is a sorted set of basis numeral system chars.
 	Alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	// maxLen is maximum available short link length
+	maxLen = 11
 )
 
 var (
@@ -77,4 +79,12 @@ func Decode(x string) (int64, error) {
 		result = -result
 	}
 	return result, nil
+}
+
+// IsShort checks a link can be short URL.
+func IsShort(pattern string) bool {
+	if len(pattern) > maxLen {
+		return false
+	}
+	return isShortURL.MatchString(pattern)
 }

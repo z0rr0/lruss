@@ -17,12 +17,19 @@ run: install
 lint: install
 	go vet $(ROOTPKG)/trim
 	golint $(ROOTPKG)/trim
+	go vet $(ROOTPKG)/conf
+	golint $(ROOTPKG)/conf
+	go vet $(ROOTPKG)/web
+	golint $(ROOTPKG)/web
+	golint $(ROOTPKG)
+	go vet $(ROOTPKG)
 
 test: lint
 	# go tool cover -html=coverage.out
 	# go tool trace ratest.test trace.out
 	go test -race -v -cover -coverprofile=trim_coverage.out -trace trim_trace.out $(ROOTPKG)/trim
 	go test -race -v -cover -coverprofile=conf_coverage.out -trace conf_trace.out $(ROOTPKG)/conf
+	go test -race -v -cover -coverprofile=web_coverage.out -trace web_trace.out $(ROOTPKG)/web
 
 bench: test
 	go test -bench=. -benchmem -v $(ROOTPKG)/trim

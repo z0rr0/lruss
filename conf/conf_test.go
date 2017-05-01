@@ -5,7 +5,6 @@
 package conf
 
 import (
-	"log"
 	"os"
 	"path"
 	"strings"
@@ -17,10 +16,6 @@ const (
 	testConfigName = "config.example.json"
 )
 
-var (
-	logger = log.New(os.Stdout, "TEST: ", log.Ldate|log.Ltime|log.Lshortfile)
-)
-
 func getConfig() string {
 	dirs := []string{os.Getenv("GOPATH"), "src"}
 	dirs = append(dirs, strings.Split(programName, "/")...)
@@ -29,11 +24,11 @@ func getConfig() string {
 }
 
 func TestNew(t *testing.T) {
-	if _, err := New("/bad_file_path.json", logger); err == nil {
+	if _, err := New("/bad_file_path.json"); err == nil {
 		t.Error("unexpected behavior")
 	}
 	cfgFile := getConfig()
-	cfg, err := New(cfgFile, logger)
+	cfg, err := New(cfgFile)
 	if err != nil {
 		t.Fatal(err)
 	}
