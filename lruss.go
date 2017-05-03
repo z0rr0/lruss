@@ -114,10 +114,10 @@ func main() {
 			code, err = handler(mainCtx, w, r)
 			if err != nil {
 				loggerError.Printf("handler error: %v", err)
-			}
-			if (code != http.StatusOK) && (code != http.StatusBadRequest) {
-				// bad request should save original error
-				err = errors.New(http.StatusText(code))
+				if code != http.StatusBadRequest {
+					// bad request should save original error
+					err = errors.New(http.StatusText(code))
+				}
 			}
 			return
 		}
@@ -126,8 +126,6 @@ func main() {
 			code, err = web.HandleRedirect(ctx, w, r)
 			if err != nil {
 				loggerInfo.Printf("redirect handler error: %v", err)
-			}
-			if code == http.StatusNotFound {
 				err = errors.New(http.StatusText(code))
 			}
 			return

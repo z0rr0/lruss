@@ -98,7 +98,7 @@ func HandleAPI(ctx context.Context, w http.ResponseWriter, r *http.Request) (int
 			return http.StatusInternalServerError, err
 		}
 		if !allowed {
-			return http.StatusTooManyRequests, nil
+			return http.StatusTooManyRequests, errors.New(http.StatusText(http.StatusTooManyRequests))
 		}
 	}
 
@@ -112,7 +112,7 @@ func HandleAPI(ctx context.Context, w http.ResponseWriter, r *http.Request) (int
 
 	_, err = c.Do("SET", short, response.URL)
 	if err != nil {
-		return http.StatusServiceUnavailable, err
+		return http.StatusServiceUnavailable, errors.New(http.StatusText(http.StatusServiceUnavailable))
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	encoder := json.NewEncoder(w)
@@ -137,7 +137,10 @@ func HandleRedirect(ctx context.Context, w http.ResponseWriter, r *http.Request)
 
 	originURL, err := redis.String(c.Do("GET", path))
 	if err != nil {
-		return http.StatusNotFound, err
+		if err != redis.ErrNil {
+			return http.StatusServiceUnavailable, err
+		}
+		return http.StatusNotFound, errors.New(http.StatusText(http.StatusNotFound))
 	}
 	status := http.StatusFound
 	http.Redirect(w, r, originURL, status)
