@@ -40,6 +40,14 @@ type rediscfg struct {
 	timeout  time.Duration
 }
 
+// rate is rate configuration settings.
+type rate struct {
+	Active         bool  `json:"active"`
+	Interval       uint  `json:"interval"`
+	Count          int64 `json:"count"`
+	CheckUserAgent bool  `json:"check_user_agent"`
+}
+
 // Cfg is rates' configuration settings.
 type Cfg struct {
 	Host               string   `json:"host"`
@@ -47,7 +55,8 @@ type Cfg struct {
 	Site               string   `json:"site"`
 	Timeout            int64    `json:"timeout"`
 	TerminationTimeout int64    `json:"termination"`
-	Rate               int64    `json:"rate"`
+	Static             string   `json:"static"`
+	Rate               rate     `json:"rate"`
 	Redis              rediscfg `json:"redis"`
 	timeout            time.Duration
 	terminationTimeout time.Duration
@@ -79,9 +88,31 @@ func (c *Cfg) isValid() error {
 		return errors.New("empty site value")
 	}
 	c.Site = strings.TrimRight(c.Site, "/ ")
-	if c.Rate < 0 {
-		return errors.New("invalid rate value")
+
+	if c.Rate.Active {
+		if c.Rate.Count < 1 {
+			return errors.New("invalid rate count")
+		}
+		if c.Rate.Interval < 1 {
+			return errors.New("invalid rate internal")
+		}
 	}
+	static := strings.Trim(c.Static, " ")
+	if !filepath.IsAbs(static) {
+		pwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		static = filepath.Join(pwd, static)
+	}
+	fm, err := os.Stat(static)
+	if err != nil {
+		return err
+	}
+	if !fm.Mode().IsDir() {
+		return errors.New("templates folder is not a directory")
+	}
+	c.Static = static
 	return nil
 }
 

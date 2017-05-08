@@ -1,0 +1,33 @@
+{{define "jscss"}}
+<script type="application/javascript">
+    function getShort() {
+        $("#result").html("");
+        $("#result").removeClass("alert-success");
+        $("#result").removeClass("alert-danger");
+        $.ajax({
+            type: "POST",
+            url: "/api/add/",
+            data: $("#id_form").serialize(),
+            dataType: "json",
+            success: function (response) {
+                $("#result").addClass("alert-success");
+                $("#result").html("<a href='" + response.short + "'>" + response.short + "</a>");
+                $("#id_url").val("");
+            },
+            error: function (response, status, text) {
+                $("#result").addClass("alert-danger");
+                $("#result").html("<b>ERROR:</b> " + text);
+            }
+        });
+    }
+</script>
+{{end}}
+
+{{define "content"}}
+  <form role="form" id="id_form" method="POST" action="#" autocomplete="off" onsubmit="getShort(); return false;">
+    <div class="form-group">
+      <input type="url" id="id_url" placeholder="Enter URL" class="form-control input-lg" name="url" required autofocus>
+    </div>
+  </form>
+  <div id="result" class="alert" role="alert"></div>
+{{end}}

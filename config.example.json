@@ -4,7 +4,13 @@
   "port": 8070,
   "timeout": 30,
   "termination": 10,
-  "rate": 120,
+  "static": "static",
+  "rate": {
+    "active": true,
+    "interval": 60,
+    "count": 120,
+    "check_user_agent": true
+  },
   "redis": {
     "host": "127.0.0.1",
     "port": 6379,

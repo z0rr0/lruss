@@ -81,6 +81,10 @@ func main() {
 	if err != nil {
 		loggerError.Fatalf("set redis pool error: %v", err)
 	}
+	err = web.ResetTplCache(cfg)
+	if err != nil {
+		loggerError.Fatalf("template cache reset: %v", err)
+	}
 	server := &http.Server{
 		Addr:           cfg.Addr(),
 		Handler:        http.DefaultServeMux,
@@ -90,8 +94,13 @@ func main() {
 		ErrorLog:       loggerError,
 	}
 	mainCtx := conf.SetContext(context.Background(), cfg)
+
+	http.Handle("/static/", http.StripPrefix(
+		"/static/",
+		http.FileServer(http.Dir(cfg.Static))),
+	)
 	handlers := map[string]func(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error){
-		//"":        web.HandleHTML,
+		"":        web.HandleHTML,
 		"api/add": web.HandleAPI,
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
