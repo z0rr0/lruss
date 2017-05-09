@@ -6,6 +6,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,7 +16,6 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
-	"bytes"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/z0rr0/lruss/conf"
@@ -208,8 +208,8 @@ func HandleRedirect(ctx context.Context, w http.ResponseWriter, r *http.Request)
 // HandleHTML returns an index HTML page.
 func HandleHTML(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error) {
 	var (
-		data interface{}
-		tpl  *template.Template
+		data   interface{}
+		tpl    *template.Template
 		buffer bytes.Buffer
 	)
 	cfg, err := conf.GetContext(ctx)

@@ -33,6 +33,13 @@ const (
 	interruptPrefix = "interrupt signal"
 )
 
+// methodHandler is HTTP method handler structure.
+type methodHandler struct {
+	Func         func(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error)
+	Method       string
+	AuthRequired bool
+}
+
 var (
 	// Version is LUSS version
 	Version = ""
@@ -99,9 +106,16 @@ func main() {
 		"/static/",
 		http.FileServer(http.Dir(cfg.Static))),
 	)
-	handlers := map[string]func(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error){
-		"":        web.HandleHTML,
-		"api/add": web.HandleAPI,
+	handlers := map[string]methodHandler{
+		"":        {web.HandleHTML, "ANY", false},
+		"api/add": {web.HandleAPI, "ANY", false},
+		//"admin/login": {web.HandleHTML, "ANY", true},
+		//"admin/logout": {web.HandleHTML, "POST", false},
+		//"admin/index": {web.HandleHTML, "GET", true},
+		//"admin/import": {web.HandleHTML, "POST", true},
+		//"admin/export": {web.HandleHTML, "GET", true},
+		//"admin/locks": {web.HandleHTML, "GET", true},
+		//"admin/unlock": {web.HandleHTML, "POST", true},
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		var err error
@@ -120,7 +134,12 @@ func main() {
 		path := strings.Trim(r.URL.Path, "/ ")
 		handler, ok := handlers[path]
 		if ok {
-			code, err = handler(mainCtx, w, r)
+			if (r.Method != handler.Method) && (handler.Method != "ANY") {
+				code = http.StatusMethodNotAllowed
+				err = errors.New(http.StatusText(code))
+				return
+			}
+			code, err = handler.Func(mainCtx, w, r)
 			if err != nil {
 				loggerError.Printf("handler error: %v", err)
 				if code != http.StatusBadRequest {

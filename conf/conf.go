@@ -18,6 +18,7 @@ import (
 
 	"context"
 	"github.com/garyburd/redigo/redis"
+	"net/url"
 )
 
 const (
@@ -99,11 +100,16 @@ func (c *Cfg) isValid() error {
 	}
 	static := strings.Trim(c.Static, " ")
 	if !filepath.IsAbs(static) {
-		pwd, err := os.Getwd()
-		if err != nil {
-			return err
+		// for test environment
+		if gopath := os.Getenv("GOPATH"); gopath != "" {
+			static = filepath.Join(gopath, "src", "github.com", "z0rr0", "lruss", static)
+		} else {
+			pwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			static = filepath.Join(pwd, static)
 		}
-		static = filepath.Join(pwd, static)
 	}
 	fm, err := os.Stat(static)
 	if err != nil {
@@ -182,6 +188,15 @@ func (c *Cfg) GetConn() redis.Conn {
 // ShortURL returns short URL for configured site.
 func (c *Cfg) ShortURL(short string) string {
 	return fmt.Sprintf("%v/%v", c.Site, short)
+}
+
+// IsSecure returns true if configuration site uses HTTPS scheme.
+func (c *Cfg) IsSecure() (bool, error) {
+	u, err := url.Parse(c.Site)
+	if err != nil {
+		return false, err
+	}
+	return u.Scheme == "https", nil
 }
 
 // New returns new rates configuration.
