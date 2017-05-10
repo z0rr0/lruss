@@ -4,6 +4,7 @@
   "port": 8070,
   "timeout": 30,
   "termination": 10,
+  "csrf_timeout": 3600,
   "static": "static",
   "rate": {
     "active": true,

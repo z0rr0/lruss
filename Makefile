@@ -21,18 +21,22 @@ lint: install
 	golint $(ROOTPKG)/conf
 	go vet $(ROOTPKG)/web
 	golint $(ROOTPKG)/web
+	go vet $(ROOTPKG)/admin
+	golint $(ROOTPKG)/admin
 	golint $(ROOTPKG)
 	go vet $(ROOTPKG)
 
 test: lint
 	# go tool cover -html=coverage.out
 	# go tool trace ratest.test trace.out
-	go test -race -v -cover -coverprofile=trim_coverage.out -trace trim_trace.out $(ROOTPKG)/trim
-	go test -race -v -cover -coverprofile=conf_coverage.out -trace conf_trace.out $(ROOTPKG)/conf
-	go test -race -v -cover -coverprofile=web_coverage.out -trace web_trace.out $(ROOTPKG)/web
+#	go test -race -v -cover -coverprofile=trim_coverage.out -trace trim_trace.out $(ROOTPKG)/trim
+#	go test -race -v -cover -coverprofile=conf_coverage.out -trace conf_trace.out $(ROOTPKG)/conf
+#	go test -race -v -cover -coverprofile=web_coverage.out -trace web_trace.out $(ROOTPKG)/web
+	go test -race -v -cover -coverprofile=admin_coverage.out -trace admin_trace.out $(ROOTPKG)/admin
 
-bench: test
+bench: lint
 	go test -bench=. -benchmem -v $(ROOTPKG)/trim
+	go test -bench=. -benchmem -v $(ROOTPKG)/admin
 
 arm:
 	env GOOS=linux GOARCH=arm go install -ldflags "$(VERSION)" $(ROOTPKG)

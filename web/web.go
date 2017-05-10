@@ -27,36 +27,12 @@ const (
 	pathKey key = "pathKey"
 )
 
-var (
-	// dbPrefixes is databases prefixes for special variables.
-	dbPrefixes = map[string]string{
-		"count": "count",
-		"host":  "host",
-		"tpl":   "tpl",
-		"url":   "url",
-	}
-)
-
 type key string
 
 // Response is API response for URL shorting.
 type Response struct {
 	URL   string `json:"url"`
 	Short string `json:"short"`
-}
-
-// dbKey returns a db key including special prefix.
-func dbKey(prefix, value string) (string, error) {
-	dbPrefix, ok := dbPrefixes[prefix]
-	if !ok {
-		return "", errors.New("not found db key")
-	}
-	return fmt.Sprintf("%v:%v", dbPrefix, value), nil
-}
-
-// httpError returns error based on text HTTP status code.
-func httpError(status int) (int, error) {
-	return status, errors.New(http.StatusText(status))
 }
 
 // allowedRate checks minute's rate for host address.
@@ -68,7 +44,7 @@ func allowedRate(r *http.Request, c redis.Conn, cfg *conf.Cfg) (bool, error) {
 	if cfg.Rate.CheckUserAgent {
 		host = fmt.Sprintf("%v:ua:%v", host, r.UserAgent())
 	}
-	hostKey, err := dbKey("host", host)
+	hostKey, err := conf.DbKey("host", host)
 	if err != nil {
 		return false, err
 	}
@@ -94,15 +70,21 @@ func ResetTplCache(cfg *conf.Cfg) error {
 	c := cfg.GetConn()
 	defer c.Close()
 
-	tplKey, err := dbKey("tpl", "index.html")
+	tplKey, err := conf.DbKey("tpl", "*")
 	if err != nil {
 		return err
 	}
-	_, err = c.Do("DEL", tplKey)
-	if err == redis.ErrNil {
-		return nil
+	keys, err := redis.Strings(c.Do("KEYS", tplKey))
+	if err != nil {
+		return err
 	}
-	return err
+	for _, key := range keys {
+		_, err = c.Do("DEL", key)
+		if (err != nil) && (err != redis.ErrNil) {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetContext writes path to context.
@@ -146,10 +128,10 @@ func HandleAPI(ctx context.Context, w http.ResponseWriter, r *http.Request) (int
 			return http.StatusInternalServerError, err
 		}
 		if !allowed {
-			return httpError(http.StatusTooManyRequests)
+			return conf.HTTPError(http.StatusTooManyRequests)
 		}
 	}
-	countKey, err := dbKey("count", "count")
+	countKey, err := conf.DbKey("count", "count")
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
@@ -160,13 +142,13 @@ func HandleAPI(ctx context.Context, w http.ResponseWriter, r *http.Request) (int
 	short := trim.Encode(num)
 	response := &Response{URL: u.String(), Short: cfg.ShortURL(short)}
 
-	urlKey, err := dbKey("url", short)
+	urlKey, err := conf.DbKey("url", short)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
 	_, err = c.Do("SET", urlKey, response.URL)
 	if err != nil {
-		return httpError(http.StatusServiceUnavailable)
+		return conf.HTTPError(http.StatusServiceUnavailable)
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	encoder := json.NewEncoder(w)
@@ -189,16 +171,16 @@ func HandleRedirect(ctx context.Context, w http.ResponseWriter, r *http.Request)
 	c := cfg.GetConn()
 	defer c.Close()
 
-	urlKey, err := dbKey("url", short)
+	urlKey, err := conf.DbKey("url", short)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
 	originURL, err := redis.String(c.Do("GET", urlKey))
 	if err != nil {
 		if err != redis.ErrNil {
-			return httpError(http.StatusServiceUnavailable)
+			return conf.HTTPError(http.StatusServiceUnavailable)
 		}
-		return httpError(http.StatusNotFound)
+		return conf.HTTPError(http.StatusNotFound)
 	}
 	status := http.StatusFound
 	http.Redirect(w, r, originURL, status)
@@ -219,7 +201,7 @@ func HandleHTML(ctx context.Context, w http.ResponseWriter, r *http.Request) (in
 	c := cfg.GetConn()
 	defer c.Close()
 
-	tplKey, err := dbKey("tpl", "index.html")
+	tplKey, err := conf.DbKey("tpl", "index.html")
 	tplString, err := redis.String(c.Do("GET", tplKey))
 	if err != nil {
 		tpl, err = template.ParseFiles(

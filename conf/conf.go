@@ -18,6 +18,7 @@ import (
 
 	"context"
 	"github.com/garyburd/redigo/redis"
+	"net/http"
 	"net/url"
 )
 
@@ -26,6 +27,18 @@ const (
 	cfgKey key = "cfg"
 )
 
+var (
+	// dbPrefixes is databases prefixes for special variables.
+	dbPrefixes = map[string]string{
+		"count": "count",
+		"host":  "host",
+		"tpl":   "tpl",
+		"url":   "url",
+		"csrf":  "csrf",
+	}
+)
+
+// key is internal context key.
 type key string
 
 // rediscfg is configuration redis settings.
@@ -56,6 +69,7 @@ type Cfg struct {
 	Site               string   `json:"site"`
 	Timeout            int64    `json:"timeout"`
 	TerminationTimeout int64    `json:"termination"`
+	CSRFTimeout        uint     `json:"csrf_timeout"`
 	Static             string   `json:"static"`
 	Rate               rate     `json:"rate"`
 	Redis              rediscfg `json:"redis"`
@@ -119,6 +133,9 @@ func (c *Cfg) isValid() error {
 		return errors.New("templates folder is not a directory")
 	}
 	c.Static = static
+	if c.CSRFTimeout < 1 {
+		return errors.New("failed CSRF timeout value")
+	}
 	return nil
 }
 
@@ -237,4 +254,18 @@ func GetContext(ctx context.Context) (*Cfg, error) {
 		return nil, errors.New("configuration not found")
 	}
 	return c, nil
+}
+
+// HTTPError returns error based on text HTTP status code.
+func HTTPError(status int) (int, error) {
+	return status, errors.New(http.StatusText(status))
+}
+
+// DbKey returns a db key including special prefix.
+func DbKey(prefix, value string) (string, error) {
+	dbPrefix, ok := dbPrefixes[prefix]
+	if !ok {
+		return "", errors.New("not found db key")
+	}
+	return fmt.Sprintf("%v:%v", dbPrefix, value), nil
 }
