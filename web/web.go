@@ -182,9 +182,8 @@ func HandleRedirect(ctx context.Context, w http.ResponseWriter, r *http.Request)
 		}
 		return conf.HTTPError(http.StatusNotFound)
 	}
-	status := http.StatusFound
-	http.Redirect(w, r, originURL, status)
-	return status, nil
+	http.Redirect(w, r, originURL, http.StatusFound)
+	return http.StatusFound, nil
 }
 
 // HandleHTML returns an index HTML page.

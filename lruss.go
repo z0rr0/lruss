@@ -7,7 +7,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -19,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/z0rr0/lruss/admin"
 	"github.com/z0rr0/lruss/conf"
 	"github.com/z0rr0/lruss/trim"
 	"github.com/z0rr0/lruss/web"
@@ -72,6 +72,7 @@ func main() {
 	}()
 	version := flag.Bool("version", false, "show version")
 	config := flag.String("config", Config, "configuration file")
+	adminPass := flag.String("adminpass", "", "create or update admin credentials")
 	flag.Parse()
 
 	if *version {
@@ -88,6 +89,26 @@ func main() {
 	if err != nil {
 		loggerError.Fatalf("set redis pool error: %v", err)
 	}
+	defer func() {
+		if err := cfg.CloseRedisPool(); err != nil {
+			loggerError.Printf("close pool error: %v\n", err)
+		} else {
+			loggerInfo.Println("closed connections pool")
+		}
+	}()
+	if *adminPass != "" {
+		password, created, err := admin.CreateOrUpdate(cfg, *adminPass)
+		if err != nil {
+			loggerError.Fatal(err)
+		}
+		if created {
+			fmt.Printf("user '%v' is created, password is '%v'\n", *adminPass, password)
+		} else {
+			fmt.Printf("password of user '%v' is updated, new value is '%v'\n", *adminPass, password)
+		}
+		return
+	}
+
 	err = web.ResetTplCache(cfg)
 	if err != nil {
 		loggerError.Fatalf("template cache reset: %v", err)
@@ -107,10 +128,10 @@ func main() {
 		http.FileServer(http.Dir(cfg.Static))),
 	)
 	handlers := map[string]methodHandler{
-		"":        {web.HandleHTML, "ANY", false},
-		"api/add": {web.HandleAPI, "ANY", false},
-		//"admin/login": {web.HandleHTML, "ANY", true},
-		//"admin/logout": {web.HandleHTML, "POST", false},
+		"":            {web.HandleHTML, "ANY", false},
+		"api/add":     {web.HandleAPI, "ANY", false},
+		"admin/login": {admin.Login, "ANY", false},
+		//"admin/logout": {admin.Logout, "POST", false},
 		//"admin/index": {web.HandleHTML, "GET", true},
 		//"admin/import": {web.HandleHTML, "POST", true},
 		//"admin/export": {web.HandleHTML, "GET", true},
@@ -135,16 +156,34 @@ func main() {
 		handler, ok := handlers[path]
 		if ok {
 			if (r.Method != handler.Method) && (handler.Method != "ANY") {
-				code = http.StatusMethodNotAllowed
-				err = errors.New(http.StatusText(code))
+				code, err = conf.HTTPError(http.StatusMethodNotAllowed)
 				return
 			}
-			code, err = handler.Func(mainCtx, w, r)
+			ctx, authErr := admin.Auth(mainCtx, r)
+			if handler.AuthRequired && (authErr != nil) {
+				loggerError.Printf("auth error: %v", authErr)
+				code = http.StatusFound
+				http.Redirect(w, r, "/admin/login/", code)
+				return
+			}
+			if r.Method == "POST" {
+				isValid, err := admin.CheckCSRF(ctx, r.PostFormValue(admin.CSRFTokenName))
+				if err != nil {
+					code, err = conf.HTTPError(http.StatusInternalServerError)
+					return
+				}
+				if !isValid {
+					loggerError.Println("invalid CSRF token")
+					code, err = conf.HTTPError(http.StatusBadRequest)
+					return
+				}
+			}
+			code, err = handler.Func(ctx, w, r)
 			if err != nil {
 				loggerError.Printf("handler error: %v", err)
 				if code != http.StatusBadRequest {
 					// bad request should save original error
-					err = errors.New(http.StatusText(code))
+					_, err = conf.HTTPError(code)
 				}
 			}
 			return
@@ -154,7 +193,7 @@ func main() {
 			code, err = web.HandleRedirect(ctx, w, r)
 			if err != nil {
 				loggerInfo.Printf("redirect handler error: %v", err)
-				err = errors.New(http.StatusText(code))
+				_, err = conf.HTTPError(code)
 			}
 			return
 		}
@@ -180,12 +219,5 @@ func main() {
 		if err := server.Shutdown(ctx); err != nil {
 			loggerError.Printf("graceful shutdown error: %v\n", err)
 		}
-		if err := cfg.CloseRedisPool(); err != nil {
-			loggerError.Printf("close pool error: %v\n", err)
-		} else {
-			loggerInfo.Println("closed connections pool")
-		}
-
 	}
-
 }

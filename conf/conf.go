@@ -6,20 +6,20 @@
 package conf
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"context"
 	"github.com/garyburd/redigo/redis"
-	"net/http"
-	"net/url"
 )
 
 const (
@@ -30,11 +30,13 @@ const (
 var (
 	// dbPrefixes is databases prefixes for special variables.
 	dbPrefixes = map[string]string{
-		"count": "count",
-		"host":  "host",
-		"tpl":   "tpl",
-		"url":   "url",
-		"csrf":  "csrf",
+		"count":   "count",
+		"host":    "host",
+		"tpl":     "tpl",
+		"url":     "url",
+		"csrf":    "csrf",
+		"session": "session",
+		"user":    "user",
 	}
 )
 

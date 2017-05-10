@@ -24,10 +24,12 @@
 {{end}}
 
 {{define "content"}}
-  <form role="form" id="id_form" method="POST" action="#" autocomplete="off" onsubmit="getShort(); return false;">
-    <div class="form-group">
-      <input type="url" id="id_url" placeholder="Enter URL" class="form-control input-lg" name="url" required autofocus>
-    </div>
-  </form>
-  <div id="result" class="alert" role="alert"></div>
+  <div class="jumbotron">
+    <form role="form" id="id_form" method="POST" action="#" autocomplete="off" onsubmit="getShort(); return false;">
+      <div class="form-group">
+        <input type="url" id="id_url" placeholder="Enter URL" class="form-control input-lg" name="url" required autofocus>
+      </div>
+    </form>
+    <div id="result" class="alert" role="alert"></div>
+  </div>
 {{end}}
