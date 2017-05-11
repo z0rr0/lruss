@@ -133,9 +133,7 @@ func main() {
 		"admin/login":  {admin.Login, "ANY", false},
 		"admin/logout": {admin.Logout, "POST", false},
 		"admin/index":  {admin.Index, "GET", true},
-		//"admin/import": {web.HandleHTML, "POST", true},
-		//"admin/export": {web.HandleHTML, "GET", true},
-		//"admin/locks": {web.HandleHTML, "GET", true},
+		"admin/export": {admin.Export, "GET", true},
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		var err error

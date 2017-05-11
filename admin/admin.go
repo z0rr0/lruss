@@ -1,6 +1,6 @@
 // Copyright 2017 Alexander Zaytsev <thebestzorro@yandex.ru>.
 // All rights reserved. Use of this source code is governed
-// by a BSD-style license that can be found in the LICENSE file.
+// by s BSD-style license that can be found in the LICENSE file.
 
 // Package admin contains HTTP administration methods.
 // Also it includes authentication functions.
@@ -11,13 +11,16 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"encoding/base64"
+	"encoding/csv"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/z0rr0/lruss/conf"
@@ -28,10 +31,12 @@ import (
 const (
 	// CSRFTokenName is common CSRF token cookie name.
 	CSRFTokenName = "csrftoken"
-	// Anonymous is a fake username for anonymous users.
+	// Anonymous is s fake username for anonymous users.
 	Anonymous = "anonymous"
 	// SessionCookie is cookie name of user authentication session.
 	SessionCookie = "session"
+	// urlPrefix is length of system short url prefix
+	urlPrefix = len("url:")
 
 	// userKey is internal user context key.
 	userKey key = "user"
@@ -64,6 +69,16 @@ type statistics struct {
 	Locks    []string
 }
 
+type shortURLs []string
+
+func (s shortURLs) Len() int      { return len(s) }
+func (s shortURLs) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s shortURLs) Less(i, j int) bool {
+	di, _ := trim.Decode(s[i][urlPrefix:])
+	dj, _ := trim.Decode(s[j][urlPrefix:])
+	return di < dj
+}
+
 // SetContext writes settings to context.
 func SetContext(ctx context.Context, username string) context.Context {
 	return context.WithValue(ctx, userKey, username)
@@ -78,7 +93,7 @@ func GetContext(ctx context.Context) string {
 	return username
 }
 
-// GetCSRF returns a CSRF (Сross Site Request Forgery) token.
+// GetCSRF returns s CSRF (Сross Site Request Forgery) token.
 func GetCSRF(ctx context.Context) (string, error) {
 	user := GetContext(ctx)
 	cfg, err := conf.GetContext(ctx)
@@ -119,7 +134,7 @@ func GetCSRF(ctx context.Context) (string, error) {
 	return token, nil
 }
 
-// CheckCSRF verifies a CSRF token.
+// CheckCSRF verifies s CSRF token.
 func CheckCSRF(ctx context.Context, token string) (bool, error) {
 	user := GetContext(ctx)
 	cfg, err := conf.GetContext(ctx)
@@ -145,7 +160,7 @@ func CheckCSRF(ctx context.Context, token string) (bool, error) {
 }
 
 // Auth checks user's authentication and saves username to the ctx context.
-// Session cookie is to be have a value like "username::xxxxx".
+// Session cookie is to be have s value like "username::xxxxx".
 func Auth(ctx context.Context, r *http.Request) (context.Context, error) {
 	cookie, err := r.Cookie(SessionCookie)
 	if err != nil {
@@ -176,7 +191,7 @@ func Auth(ctx context.Context, r *http.Request) (context.Context, error) {
 	return SetContext(ctx, values[0]), nil
 }
 
-// setSession generates and sets new session key, after that creates a new session cookie.
+// setSession generates and sets new session key, after that creates s new session cookie.
 func setSession(w http.ResponseWriter, c redis.Conn, secure bool, username string) error {
 	sessionKey, err := conf.DbKey("session", username)
 	if err != nil {
@@ -204,7 +219,7 @@ func setSession(w http.ResponseWriter, c redis.Conn, secure bool, username strin
 	return nil
 }
 
-// CreateOrUpdate creates new user/password pair or updates a current user if it already exists.
+// CreateOrUpdate creates new user/password pair or updates s current user if it already exists.
 func CreateOrUpdate(cfg *conf.Cfg, username string) (string, bool, error) {
 	c := cfg.GetConn()
 	defer c.Close()
@@ -229,7 +244,7 @@ func CreateOrUpdate(cfg *conf.Cfg, username string) (string, bool, error) {
 	return hex.EncodeToString(b), created == 1, nil
 }
 
-// CheckPassword verifies a password of user with name username.
+// CheckPassword verifies s password of user with name username.
 func CheckPassword(c redis.Conn, username, password string) error {
 	usernameKey, err := conf.DbKey("user", username)
 	if err != nil {
@@ -421,7 +436,11 @@ func Index(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, er
 	}
 	locks := make([]string, len(keys))
 	for i, key := range keys {
-		locks[i] = key[len(dbKey)-1:]
+		ttl, err := redis.Int(c.Do("TTL", key))
+		if err != nil {
+			return http.StatusInternalServerError, err
+		}
+		locks[i] = fmt.Sprintf("[%v sec.] %v", ttl, key[len(dbKey)-1:])
 	}
 	data.Locks = locks
 
@@ -434,6 +453,54 @@ func Index(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, er
 		return http.StatusInternalServerError, err
 	}
 	err = tpl.ExecuteTemplate(w, "base", data)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	return http.StatusOK, nil
+}
+
+// Export returns CSV data of all handled URLs.
+func Export(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error) {
+	const layout = "20060102_150405"
+
+	cfg, err := conf.GetContext(ctx)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	c := cfg.GetConn()
+	defer c.Close()
+
+	dbKey, err := conf.DbKey("url", "*")
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	keys, err := redis.Strings(c.Do("KEYS", dbKey))
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	sort.Sort(shortURLs(keys))
+	w.Header().Set(
+		"Content-disposition",
+		fmt.Sprintf("attachment; filename=\"lruss_export_%v.csv\"", time.Now().UTC().Format(layout)),
+	)
+	w.Header().Set("Content-Type", "text/csv")
+	wCSV := csv.NewWriter(w)
+	err = wCSV.Write([]string{"short", "origin"})
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	for _, key := range keys {
+		originURL, err := redis.String(c.Do("GET", key))
+		if err != nil {
+			return http.StatusInternalServerError, err
+		}
+		err = wCSV.Write([]string{cfg.ShortURL(key[urlPrefix:]), originURL})
+		if err != nil {
+			return http.StatusInternalServerError, err
+		}
+	}
+	wCSV.Flush()
+	err = wCSV.Error()
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
