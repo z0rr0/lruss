@@ -1,8 +1,8 @@
+{{define "title"}}Administration - Login{{end}}
 {{define "content"}}
 <div class="container-fluid">
 	<div class="row">
-		<div class="col-sm-1"></div>
-		<div class="col-sm-10">
+		<div class="col-sm-12">
 			<form class="form-inline" action="/admin/login/" method="POST" autocomplete="off">
 				<input type="hidden" name="csrftoken" value="{{.CSRF}}">
 				<input type="text" name="user" class="form-control mb-2 mr-sm-2 mb-sm-0" placeholder="Username" value="{{.User}}" required>
@@ -10,12 +10,10 @@
 				<button type="submit" class="btn btn-primary">Submit</button>
 			</form>
 		</div>
-		<div class="col-sm-1"></div>
 	</div>
 
 	<div class="row">
-		<div class="col-sm-1"></div>
-		<div class="col-sm-10">
+		<div class="col-sm-12">
 			{{if .Msg}}
 			<p>
 				<div class="alert alert-danger" role="alert">
@@ -24,7 +22,6 @@
 			</p>
 			{{end}}
 		</div>
-		<div class="col-sm-1"></div>
 	</div>
 </div>
 {{end}}

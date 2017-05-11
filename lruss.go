@@ -128,15 +128,14 @@ func main() {
 		http.FileServer(http.Dir(cfg.Static))),
 	)
 	handlers := map[string]methodHandler{
-		"":            {web.HandleHTML, "ANY", false},
-		"api/add":     {web.HandleAPI, "ANY", false},
-		"admin/login": {admin.Login, "ANY", false},
-		//"admin/logout": {admin.Logout, "POST", false},
-		//"admin/index": {web.HandleHTML, "GET", true},
+		"":             {web.HandleHTML, "ANY", false},
+		"api/add":      {web.HandleAPI, "ANY", false},
+		"admin/login":  {admin.Login, "ANY", false},
+		"admin/logout": {admin.Logout, "POST", false},
+		"admin/index":  {admin.Index, "GET", true},
 		//"admin/import": {web.HandleHTML, "POST", true},
 		//"admin/export": {web.HandleHTML, "GET", true},
 		//"admin/locks": {web.HandleHTML, "GET", true},
-		//"admin/unlock": {web.HandleHTML, "POST", true},
 	}
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		var err error

@@ -1,0 +1,52 @@
+{{define "title"}}Administration{{end}}
+{{define "content"}}
+<div class="container-fluid">
+	<div class="row">
+		<ul class="nav nav-pills">
+			<li class="nav-item">
+				<form action="/admin/logout" method="post">
+					<input type="hidden" name="csrftoken" value="{{.CSRF}}">
+					<button type="submit" class="btn btn-primary">LogOut</button>
+				</form>
+			</li>
+			<li class="nav-item">
+				<a class="nav-link" href="/admin/import/">Import</a>
+			</li>
+			<li class="nav-item">
+				<a class="nav-link" href="/admin/export/">Export</a>
+			</li>
+		</ul>
+	</div>
+</div>
+
+<div class="container-fluid">
+	<div class="row">
+		<div class="col-sm-12"></div>
+	</div>
+	<div class="row">
+		<div class="col-sm-4"><strong>Last URL:</strong></div>
+		<div class="col-sm-8">
+			{{.LastNum}} <a href="{{.LastURL}}" target="_blank">{{.LastURL}}</a>
+		</div>
+	</div>
+	<div class="row">
+		<div class="col-sm-4"><strong>Admin sessions:</strong></div>
+		<div class="col-sm-8">{{.Sessions}}</div>
+	</div>
+	<div class="row">
+		<div class="col-sm-4"><strong>Locks:</strong></div>
+		<div class="col-sm-8">
+			{{if .Locks}}
+				<ul>
+					{{range .Locks}}
+					<li>{{.}}</li>
+					{{end}}
+				</ul>
+			{{else}}
+				not found
+			{{end}}
+		</div>
+	</div>
+</div>
+{{end}}
+{{define "jscss"}}{{end}}

@@ -21,6 +21,7 @@ import (
 
 	"github.com/garyburd/redigo/redis"
 	"github.com/z0rr0/lruss/conf"
+	"github.com/z0rr0/lruss/trim"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -52,6 +53,15 @@ type loginForm struct {
 	Msg      string
 	CSRF     string
 	Failed   bool
+}
+
+// statistics is administration statistics struct.
+type statistics struct {
+	LastNum  int64
+	LastURL  string
+	Sessions string
+	CSRF     string
+	Locks    []string
 }
 
 // SetContext writes settings to context.
@@ -295,6 +305,135 @@ func Login(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, er
 		form.Msg = "mismatch user or password"
 	}
 	err = renderLogin(w, form, cfg.Static)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	return http.StatusOK, nil
+}
+
+// Logout is used to finish administration session.
+func Logout(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error) {
+	cfg, err := conf.GetContext(ctx)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	username := GetContext(ctx)
+	if username == Anonymous {
+		// user is not authenticated
+		http.Redirect(w, r, "/", http.StatusFound)
+		return http.StatusFound, nil
+	}
+	c := cfg.GetConn()
+	defer c.Close()
+
+	cookie, err := r.Cookie(SessionCookie)
+	if err != nil {
+		// impossible case
+		http.Redirect(w, r, "/", http.StatusFound)
+		return http.StatusFound, nil
+	}
+	values := strings.SplitN(cookie.Value, "::", 2)
+	if len(values) < 2 {
+		http.Redirect(w, r, "/", http.StatusFound)
+		return http.StatusFound, nil
+	}
+	sessionKey, err := conf.DbKey("session", username)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	// remove session from db
+	_, err = c.Do("SREM", sessionKey, values[1])
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	secure, err := cfg.IsSecure()
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	// remove session cookie
+	cookie = &http.Cookie{
+		Name:     SessionCookie,
+		Value:    "",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Path:     "/",
+		Secure:   secure,
+	}
+	http.SetCookie(w, cookie)
+	http.Redirect(w, r, "/admin/login/", http.StatusFound)
+	return http.StatusFound, nil
+}
+
+// Index returns admin statistics page.
+func Index(ctx context.Context, w http.ResponseWriter, r *http.Request) (int, error) {
+	cfg, err := conf.GetContext(ctx)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	csrfValue, err := GetCSRF(ctx)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	data := statistics{CSRF: csrfValue}
+	c := cfg.GetConn()
+	defer c.Close()
+
+	// last link
+	dbKey, err := conf.DbKey("count", "count")
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	n, err := redis.Int64(c.Do("GET", dbKey))
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	short := trim.Encode(n)
+	data.LastNum, data.LastURL = n, cfg.ShortURL(short)
+
+	// sessions
+	dbKey, err = conf.DbKey("session", "*")
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	keys, err := redis.Strings(c.Do("KEYS", dbKey))
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	sessions := make([]string, len(keys))
+	for i, key := range keys {
+		user := key[len(dbKey)-1:]
+		s, err := redis.Strings(c.Do("SMEMBERS", key))
+		if err != nil {
+			return http.StatusInternalServerError, err
+		}
+		sessions[i] = fmt.Sprintf("%v (%d)", user, len(s))
+	}
+	data.Sessions = strings.Join(sessions, ", ")
+
+	// locks
+	dbKey, err = conf.DbKey("host", "*")
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	keys, err = redis.Strings(c.Do("KEYS", dbKey))
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	locks := make([]string, len(keys))
+	for i, key := range keys {
+		locks[i] = key[len(dbKey)-1:]
+	}
+	data.Locks = locks
+
+	// render template
+	tpl, err := template.ParseFiles(
+		filepath.Join(cfg.Static, "base.html"),
+		filepath.Join(cfg.Static, "admin_index.html"),
+	)
+	if err != nil {
+		return http.StatusInternalServerError, err
+	}
+	err = tpl.ExecuteTemplate(w, "base", data)
 	if err != nil {
 		return http.StatusInternalServerError, err
 	}
