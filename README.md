@@ -2,6 +2,11 @@
 
 LRUSS is a Redis based URL Shortening Service.
 
+It's a simple web app to convert incoming URL address 
+to short one using custom domain. 
+
+[Redis](https://redis.io/) is used as a storage and cache.
+
 ## Build
 
 Run to build:
